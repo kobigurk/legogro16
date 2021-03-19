@@ -1,3 +1,4 @@
+use crate::link::{EK, PP, VK};
 use ark_ec::PairingEngine;
 use ark_ff::bytes::ToBytes;
 use ark_serialize::*;
@@ -15,6 +16,12 @@ pub struct Proof<E: PairingEngine> {
     pub b: E::G2Affine,
     /// The `C` element in `G1`.
     pub c: E::G1Affine,
+    /// The `D` element in `G1`.
+    pub d: E::G1Affine,
+
+    /// cp_{link} proof of commitment equality
+    pub link_d: E::G1Affine,
+    pub link_pi: E::G1Affine,
 }
 
 impl<E: PairingEngine> ToBytes for Proof<E> {
@@ -22,7 +29,10 @@ impl<E: PairingEngine> ToBytes for Proof<E> {
     fn write<W: Write>(&self, mut writer: W) -> io::Result<()> {
         self.a.write(&mut writer)?;
         self.b.write(&mut writer)?;
-        self.c.write(&mut writer)
+        self.c.write(&mut writer)?;
+        self.d.write(&mut writer)?;
+        self.link_d.write(&mut writer)?;
+        self.link_pi.write(&mut writer)
     }
 }
 
@@ -32,6 +42,9 @@ impl<E: PairingEngine> Default for Proof<E> {
             a: E::G1Affine::default(),
             b: E::G2Affine::default(),
             c: E::G1Affine::default(),
+            d: E::G1Affine::default(),
+            link_pi: E::G1Affine::default(),
+            link_d: E::G1Affine::default(),
         }
     }
 }
@@ -52,6 +65,13 @@ pub struct VerifyingKey<E: PairingEngine> {
     pub delta_g2: E::G2Affine,
     /// The `gamma^{-1} * (beta * a_i + alpha * b_i + c_i) * H`, where `H` is the generator of `E::G1`.
     pub gamma_abc_g1: Vec<E::G1Affine>,
+    /// The element `eta*gamma^-1 * G` in `E::G1`.
+    pub eta_gamma_inv_g1: E::G1Affine,
+
+    /// cp_{link}
+    pub link_pp: PP<E::G1Affine, E::G2Affine>,
+    pub link_bases: Vec<E::G1Affine>,
+    pub link_vk: VK<E::G2Affine>,
 }
 
 impl<E: PairingEngine> ToBytes for VerifyingKey<E> {
@@ -63,6 +83,13 @@ impl<E: PairingEngine> ToBytes for VerifyingKey<E> {
         for q in &self.gamma_abc_g1 {
             q.write(&mut writer)?;
         }
+        self.eta_gamma_inv_g1.write(&mut writer)?;
+        self.link_pp.write(&mut writer)?;
+        for q in &self.link_bases {
+            q.write(&mut writer)?;
+        }
+        self.link_vk.write(&mut writer)?;
+
         Ok(())
     }
 }
@@ -75,6 +102,10 @@ impl<E: PairingEngine> Default for VerifyingKey<E> {
             gamma_g2: E::G2Affine::default(),
             delta_g2: E::G2Affine::default(),
             gamma_abc_g1: Vec::new(),
+            eta_gamma_inv_g1: E::G1Affine::default(),
+            link_pp: PP::<E::G1Affine, E::G2Affine>::default(),
+            link_bases: Vec::new(),
+            link_vk: VK::<E::G2Affine>::default(),
         }
     }
 }
@@ -138,6 +169,8 @@ pub struct ProvingKey<E: PairingEngine> {
     pub beta_g1: E::G1Affine,
     /// The element `delta * G` in `E::G1`.
     pub delta_g1: E::G1Affine,
+    /// The element `eta*delta^-1 * G` in `E::G1`.
+    pub eta_delta_inv_g1: E::G1Affine,
     /// The elements `a_i * G` in `E::G1`.
     pub a_query: Vec<E::G1Affine>,
     /// The elements `b_i * G` in `E::G1`.
@@ -148,4 +181,7 @@ pub struct ProvingKey<E: PairingEngine> {
     pub h_query: Vec<E::G1Affine>,
     /// The elements `l_i * G` in `E::G1`.
     pub l_query: Vec<E::G1Affine>,
+
+    /// Evaluation key of cp_{link}
+    pub link_ek: EK<E::G1Affine>,
 }

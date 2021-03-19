@@ -1,5 +1,5 @@
 [package]
-name = "ark-groth16"
+name = "legogro16"
 version = "0.1.0"
 authors = [ "arkworks contributors" ]
 description = "An implementation of the Groth 2016 zkSNARK proof system"
@@ -15,6 +15,7 @@ edition = "2018"
 ################################# Dependencies ################################
 
 [dependencies]
+ark-bls12-381 = { git = "https://github.com/arkworks-rs/curves" }
 ark-ff = { git = "https://github.com/arkworks-rs/algebra", default-features = false }
 ark-ec = { git = "https://github.com/arkworks-rs/algebra", default-features = false }
 ark-serialize = { git = "https://github.com/arkworks-rs/algebra", default-features = false, features = [ "derive" ] }
@@ -55,18 +56,8 @@ parallel = ["std", "ark-ff/parallel", "ark-poly/parallel", "ark-ec/parallel", "a
 r1cs = [ "ark-crypto-primitives/r1cs", "ark-r1cs-std", "tracing", "derivative" ]
 print-trace = [ "bench-utils/print-trace" ]
 
-[[example]]
-name = "groth16"
-path = "examples/snark-scalability/groth16.rs"
-required-features = ["std"]
-
 [[bench]]
 name = "groth16-benches"
 path = "benches/bench.rs"
 harness = false
 required-features = ["std"]
-
-# [[example]]
-# name = "groth16-recursive"
-# path = "examples/recursive-snark/groth16.rs"
-# required-features = ["std"]

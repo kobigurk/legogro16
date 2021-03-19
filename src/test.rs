@@ -1,8 +1,8 @@
 use crate::{
-    create_random_proof, generate_random_parameters, prepare_verifying_key, rerandomize_proof,
+    create_random_proof, generate_random_parameters, prepare_verifying_key, verify_commitment,
     verify_proof,
 };
-use ark_ec::PairingEngine;
+use ark_ec::{PairingEngine, ProjectiveCurve};
 use ark_ff::UniformRand;
 use ark_std::test_rng;
 
@@ -51,8 +51,16 @@ where
 {
     let rng = &mut test_rng();
 
-    let params =
-        generate_random_parameters::<E, _, _>(MySillyCircuit { a: None, b: None }, rng).unwrap();
+    let pedersen_bases = (0..3)
+        .map(|_| E::G1Projective::rand(rng).into_affine())
+        .collect::<Vec<_>>();
+
+    let params = generate_random_parameters::<E, _, _>(
+        MySillyCircuit { a: None, b: None },
+        &pedersen_bases,
+        rng,
+    )
+    .unwrap();
 
     let pvk = prepare_verifying_key::<E>(&params.vk);
 
@@ -62,96 +70,46 @@ where
         let mut c = a;
         c.mul_assign(&b);
 
+        // Create commitment randomness
+        let v = E::Fr::rand(rng);
+        let link_v = E::Fr::rand(rng);
+        // Create a LegoGro16 proof with our parameters.
         let proof = create_random_proof(
             MySillyCircuit {
                 a: Some(a),
                 b: Some(b),
             },
+            v,
+            link_v,
             &params,
             rng,
         )
         .unwrap();
 
-        assert!(verify_proof(&pvk, &proof, &[c]).unwrap());
-        assert!(!verify_proof(&pvk, &proof, &[a]).unwrap());
+        assert!(verify_proof(&pvk, &proof).unwrap());
+        assert!(verify_commitment(&pvk, &proof, &[c], &v, &link_v).unwrap());
+        assert!(!verify_commitment(&pvk, &proof, &[a], &v, &link_v).unwrap());
+        assert!(!verify_commitment(&pvk, &proof, &[c], &a, &link_v).unwrap());
     }
 }
 
-fn test_rerandomize<E>()
-where
-    E: PairingEngine,
-{
-    // First create an arbitrary Groth16 in the normal way
-
-    let rng = &mut test_rng();
-
-    let params =
-        generate_random_parameters::<E, _, _>(MySillyCircuit { a: None, b: None }, rng).unwrap();
-
-    let pvk = prepare_verifying_key::<E>(&params.vk);
-
-    let a = E::Fr::rand(rng);
-    let b = E::Fr::rand(rng);
-    let c = a * &b;
-
-    // Create the initial proof
-    let proof1 = create_random_proof(
-        MySillyCircuit {
-            a: Some(a),
-            b: Some(b),
-        },
-        &params,
-        rng,
-    )
-    .unwrap();
-
-    // Rerandomize the proof, then rerandomize that
-    let proof2 = rerandomize_proof(rng, &params.vk, &proof1);
-    let proof3 = rerandomize_proof(rng, &params.vk, &proof2);
-
-    // Check correctness: a rerandomized proof validates when the original validates
-    assert!(verify_proof(&pvk, &proof1, &[c]).unwrap());
-    assert!(verify_proof(&pvk, &proof2, &[c]).unwrap());
-    assert!(verify_proof(&pvk, &proof3, &[c]).unwrap());
-
-    // Check soundness: a rerandomized proof fails to validate when the original fails to validate
-    assert!(!verify_proof(&pvk, &proof1, &[E::Fr::zero()]).unwrap());
-    assert!(!verify_proof(&pvk, &proof2, &[E::Fr::zero()]).unwrap());
-    assert!(!verify_proof(&pvk, &proof3, &[E::Fr::zero()]).unwrap());
-
-    // Check that the proofs are not equal as group elements
-    assert!(proof1 != proof2);
-    assert!(proof1 != proof3);
-    assert!(proof2 != proof3);
-}
-
 mod bls12_377 {
-    use super::{test_prove_and_verify, test_rerandomize};
+    use super::test_prove_and_verify;
     use ark_bls12_377::Bls12_377;
 
     #[test]
     fn prove_and_verify() {
         test_prove_and_verify::<Bls12_377>(100);
     }
-
-    #[test]
-    fn rerandomize() {
-        test_rerandomize::<Bls12_377>();
-    }
 }
 
 mod cp6_782 {
-    use super::{test_prove_and_verify, test_rerandomize};
+    use super::test_prove_and_verify;
 
     use ark_cp6_782::CP6_782;
 
     #[test]
     fn prove_and_verify() {
         test_prove_and_verify::<CP6_782>(1);
-    }
-
-    #[test]
-    fn rerandomize() {
-        test_rerandomize::<CP6_782>();
     }
 }

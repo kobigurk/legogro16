@@ -1,6 +1,10 @@
-use crate::{r1cs_to_qap::R1CStoQAP, Proof, ProvingKey, VerifyingKey};
+use crate::{
+    link::{PESubspaceSnark, SubspaceSnark},
+    r1cs_to_qap::R1CStoQAP,
+    Proof, ProvingKey,
+};
 use ark_ec::{msm::VariableBaseMSM, AffineCurve, PairingEngine, ProjectiveCurve};
-use ark_ff::{Field, PrimeField, UniformRand, Zero};
+use ark_ff::{PrimeField, UniformRand, Zero};
 use ark_poly::GeneralEvaluationDomain;
 use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, OptimizationGoal, Result as R1CSResult,
@@ -16,6 +20,8 @@ use rayon::prelude::*;
 #[inline]
 pub fn create_random_proof<E, C, R>(
     circuit: C,
+    v: E::Fr,
+    link_v: E::Fr,
     pk: &ProvingKey<E>,
     rng: &mut R,
 ) -> R1CSResult<Proof<E>>
@@ -27,17 +33,7 @@ where
     let r = E::Fr::rand(rng);
     let s = E::Fr::rand(rng);
 
-    create_proof::<E, C>(circuit, pk, r, s)
-}
-
-/// Create a Groth16 proof that is *not* zero-knowledge.
-#[inline]
-pub fn create_proof_no_zk<E, C>(circuit: C, pk: &ProvingKey<E>) -> R1CSResult<Proof<E>>
-where
-    E: PairingEngine,
-    C: ConstraintSynthesizer<E::Fr>,
-{
-    create_proof::<E, C>(circuit, pk, E::Fr::zero(), E::Fr::zero())
+    create_proof::<E, C>(circuit, pk, r, s, v, link_v)
 }
 
 /// Create a Groth16 proof using randomness `r` and `s`.
@@ -47,6 +43,8 @@ pub fn create_proof<E, C>(
     pk: &ProvingKey<E>,
     r: E::Fr,
     s: E::Fr,
+    v: E::Fr,
+    link_v: E::Fr,
 ) -> R1CSResult<Proof<E>>
 where
     E: PairingEngine,
@@ -87,13 +85,19 @@ where
     let l_aux_acc = VariableBaseMSM::multi_scalar_mul(&pk.l_query, &aux_assignment);
 
     let r_s_delta_g1 = pk.delta_g1.into_projective().mul(r.into()).mul(s.into());
+    let v_eta_delta_inv = pk.eta_delta_inv_g1.into_projective().mul(v.into());
 
     end_timer!(c_acc_time);
 
-    let input_assignment = prover.instance_assignment[1..]
-        .iter()
+    let num_inputs = prover.instance_assignment.len();
+    let input_assignment_with_one_field = prover.instance_assignment.clone();
+
+    let input_assignment_with_one = input_assignment_with_one_field[0..num_inputs]
+        .into_iter()
         .map(|s| s.into_repr())
         .collect::<Vec<_>>();
+
+    let input_assignment = input_assignment_with_one[1..].to_vec();
 
     drop(prover);
     drop(cs);
@@ -138,7 +142,40 @@ where
     g_c -= &r_s_delta_g1;
     g_c += &l_aux_acc;
     g_c += &h_acc;
+    g_c -= &v_eta_delta_inv;
     end_timer!(c_time);
+
+    // Compute D
+    let d_acc_time = start_timer!(|| "Compute D");
+
+    let gamma_abc_inputs_source = &pk.vk.gamma_abc_g1;
+    let gamma_abc_inputs_acc =
+        VariableBaseMSM::multi_scalar_mul(gamma_abc_inputs_source, &input_assignment_with_one);
+
+    let v_eta_gamma_inv = pk.vk.eta_gamma_inv_g1.into_projective().mul(v.into_repr());
+
+    let mut g_d = gamma_abc_inputs_acc;
+    g_d += &v_eta_gamma_inv;
+    end_timer!(d_acc_time);
+
+    let input_assignment_with_one_with_link_hider: Vec<E::Fr> =
+        [&input_assignment_with_one_field, &[link_v][..]].concat();
+    let input_assignment_with_one_with_hiders: Vec<E::Fr> =
+        [&input_assignment_with_one_with_link_hider, &[v][..]].concat();
+    let link_time = start_timer!(|| "Compute CP_{link}");
+    let link_pi = PESubspaceSnark::<E>::prove(
+        &pk.vk.link_pp,
+        &pk.link_ek,
+        &input_assignment_with_one_with_hiders,
+    );
+    let pedersen_bases_affine = &pk.vk.link_bases;
+    let pedersen_values_repr = input_assignment_with_one_with_link_hider
+        .into_iter()
+        .map(|v| v.into_repr())
+        .collect::<Vec<_>>();
+    let g_d_link = VariableBaseMSM::multi_scalar_mul(&pedersen_bases_affine, &pedersen_values_repr);
+
+    end_timer!(link_time);
 
     end_timer!(prover_time);
 
@@ -146,40 +183,10 @@ where
         a: g_a.into_affine(),
         b: g2_b.into_affine(),
         c: g_c.into_affine(),
+        d: g_d.into_affine(),
+        link_d: g_d_link.into_affine(),
+        link_pi,
     })
-}
-
-/// Given a Groth16 proof, returns a fresh proof of the same statement. For a proof π of a
-/// statement S, the output of the non-deterministic procedure `rerandomize_proof(π)` is
-/// statistically indistinguishable from a fresh honest proof of S. For more info, see theorem 3 of
-/// [\[BKSV20\]](https://eprint.iacr.org/2020/811)
-pub fn rerandomize_proof<E, R>(rng: &mut R, vk: &VerifyingKey<E>, proof: &Proof<E>) -> Proof<E>
-where
-    E: PairingEngine,
-    R: Rng,
-{
-    // These are our rerandomization factors. They must be nonzero and uniformly sampled.
-    let (mut r1, mut r2) = (E::Fr::zero(), E::Fr::zero());
-    while r1.is_zero() || r2.is_zero() {
-        r1 = E::Fr::rand(rng);
-        r2 = E::Fr::rand(rng);
-    }
-
-    // See figure 1 in the paper referenced above:
-    //   A' = (1/r₁)A
-    //   B' = r₁B + r₁r₂(δG₂)
-    //   C' = C + r₂A
-
-    // We can unwrap() this because r₁ is guaranteed to be nonzero
-    let new_a = proof.a.mul(r1.inverse().unwrap());
-    let new_b = proof.b.mul(r1) + &vk.delta_g2.mul(r1 * &r2);
-    let new_c = proof.c + proof.a.mul(r2).into_affine();
-
-    Proof {
-        a: new_a.into_affine(),
-        b: new_b.into_affine(),
-        c: new_c,
-    }
 }
 
 fn calculate_coeff<G: AffineCurve>(

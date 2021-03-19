@@ -11,7 +11,7 @@
 )]
 
 // For randomness (during paramgen and proof generation)
-use ark_std::rand::Rng;
+use ark_std::{rand::Rng, UniformRand};
 
 // For benchmarking
 use std::time::{Duration, Instant};
@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 // Bring in some tools for using pairing-friendly curves
 // We're going to use the BLS12-377 pairing-friendly elliptic curve.
 use ark_bls12_377::{Bls12_377, Fr};
+use ark_ec::ProjectiveCurve;
 use ark_ff::Field;
 use ark_std::test_rng;
 
@@ -146,7 +147,8 @@ impl<'a, F: Field> ConstraintSynthesizer<F> for MiMCDemo<'a, F> {
 fn test_mimc_gm_17() {
     // We're going to use the Groth-Maller17 proving system.
     use ark_groth16::{
-        create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof,
+        create_random_proof, generate_random_parameters, prepare_verifying_key, verify_commitment,
+        verify_proof,
     };
 
     // This may not be cryptographically safe, use
@@ -166,7 +168,10 @@ fn test_mimc_gm_17() {
             constants: &constants,
         };
 
-        generate_random_parameters::<Bls12_377, _, _>(c, rng).unwrap()
+        let pedersen_bases = (0..3)
+            .map(|_| ark_bls12_377::G1Projective::rand(rng).into_affine())
+            .collect::<Vec<_>>();
+        generate_random_parameters::<Bls12_377, _, _>(c, &pedersen_bases, rng).unwrap()
     };
 
     // Prepare the verification key (for proof verification)
@@ -201,9 +206,13 @@ fn test_mimc_gm_17() {
                 constants: &constants,
             };
 
-            // Create a groth16 proof with our parameters.
-            let proof = create_random_proof(c, &params, rng).unwrap();
-            assert!(verify_proof(&pvk, &proof, &[image]).unwrap());
+            // Create commitment randomness
+            let v = Fr::rand(rng);
+            let link_v = Fr::rand(rng);
+            // Create a LegoGro16 proof with our parameters.
+            let proof = create_random_proof(c, v, link_v, &params, rng).unwrap();
+            assert!(verify_proof(&pvk, &proof).unwrap());
+            assert!(verify_commitment(&pvk, &proof, &[image], &v, &link_v).unwrap());
 
             // proof.write(&mut proof_vec).unwrap();
         }

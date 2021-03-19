@@ -1,5 +1,9 @@
-use crate::{r1cs_to_qap::R1CStoQAP, ProvingKey, Vec, VerifyingKey};
-use ark_ec::{msm::FixedBaseMSM, PairingEngine, ProjectiveCurve};
+use crate::{
+    link::{PESubspaceSnark, SparseMatrix, SubspaceSnark, PP},
+    r1cs_to_qap::R1CStoQAP,
+    ProvingKey, Vec, VerifyingKey,
+};
+use ark_ec::{msm::FixedBaseMSM, AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{Field, PrimeField, UniformRand, Zero};
 use ark_poly::{EvaluationDomain, GeneralEvaluationDomain};
 use ark_relations::r1cs::{
@@ -15,7 +19,11 @@ use rayon::prelude::*;
 /// Generates a random common reference string for
 /// a circuit.
 #[inline]
-pub fn generate_random_parameters<E, C, R>(circuit: C, rng: &mut R) -> R1CSResult<ProvingKey<E>>
+pub fn generate_random_parameters<E, C, R>(
+    circuit: C,
+    pedersen_bases: &[E::G1Affine],
+    rng: &mut R,
+) -> R1CSResult<ProvingKey<E>>
 where
     E: PairingEngine,
     C: ConstraintSynthesizer<E::Fr>,
@@ -25,8 +33,9 @@ where
     let beta = E::Fr::rand(rng);
     let gamma = E::Fr::rand(rng);
     let delta = E::Fr::rand(rng);
+    let eta = E::Fr::rand(rng);
 
-    generate_parameters::<E, C, R>(circuit, alpha, beta, gamma, delta, rng)
+    generate_parameters::<E, C, R>(circuit, alpha, beta, gamma, delta, eta, pedersen_bases, rng)
 }
 
 /// Create parameters for a circuit, given some toxic waste.
@@ -36,6 +45,8 @@ pub fn generate_parameters<E, C, R>(
     beta: E::Fr,
     gamma: E::Fr,
     delta: E::Fr,
+    eta: E::Fr,
+    pedersen_bases: &[E::G1Affine],
     rng: &mut R,
 ) -> R1CSResult<ProvingKey<E>>
 where
@@ -191,12 +202,42 @@ where
 
     end_timer!(verifying_key_time);
 
+    let eta_gamma_inv_g1 = g1_generator.mul((eta * &gamma_inverse).into_repr());
+
+    let link_rows = 2; // we're comparirng two commitments
+    let link_cols = gamma_abc_g1.len() + 2; // we have len inputs and 1 hiding factor per row
+    let link_pp = PP::<E::G1Affine, E::G2Affine> {
+        l: link_rows,
+        t: link_cols,
+        g1: E::G1Affine::prime_subgroup_generator(),
+        g2: E::G2Affine::prime_subgroup_generator(),
+    };
+
+    let mut link_m = SparseMatrix::<E::G1Affine>::new(link_rows, link_cols);
+    link_m.insert_row_slice(0, 0, &pedersen_bases);
+    link_m.insert_row_slice(
+        1,
+        0,
+        &gamma_abc_g1
+            .iter()
+            .map(|p| p.into_affine())
+            .collect::<Vec<_>>(),
+    );
+    link_m.insert_row_slice(1, gamma_abc_g1.len() + 1, &[eta_gamma_inv_g1.into_affine()]);
+
+    let (link_ek, link_vk) = PESubspaceSnark::<E>::keygen(rng, &link_pp, link_m);
+
     let vk = VerifyingKey::<E> {
         alpha_g1: alpha_g1.into_affine(),
         beta_g2: beta_g2.into_affine(),
         gamma_g2: gamma_g2.into_affine(),
         delta_g2: delta_g2.into_affine(),
         gamma_abc_g1: E::G1Projective::batch_normalization_into_affine(&gamma_abc_g1),
+        eta_gamma_inv_g1: eta_gamma_inv_g1.into_affine(),
+
+        link_pp,
+        link_bases: pedersen_bases.to_vec(),
+        link_vk,
     };
 
     let batch_normalization_time = start_timer!(|| "Convert proving key elements to affine");
@@ -208,14 +249,19 @@ where
     end_timer!(batch_normalization_time);
     end_timer!(setup_time);
 
+    let eta_delta_inv_g1 = g1_generator.mul((eta * &delta_inverse).into_repr());
+
     Ok(ProvingKey {
         vk,
         beta_g1: beta_g1.into_affine(),
         delta_g1: delta_g1.into_affine(),
+        eta_delta_inv_g1: eta_delta_inv_g1.into_affine(),
         a_query,
         b_g1_query,
         b_g2_query,
         h_query,
         l_query,
+
+        link_ek,
     })
 }
