@@ -21,13 +21,14 @@ use std::time::{Duration, Instant};
 use ark_bls12_377::{Bls12_377, Fr};
 use ark_ec::ProjectiveCurve;
 use ark_ff::Field;
-use ark_std::test_rng;
 
 // We'll use these interfaces to construct our circuit.
 use ark_relations::{
     lc, ns,
     r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError, Variable},
 };
+
+use ark_std::rand::{rngs::StdRng, SeedableRng};
 
 const MIMC_ROUNDS: usize = 322;
 
@@ -144,16 +145,16 @@ impl<'a, F: Field> ConstraintSynthesizer<F> for MiMCDemo<'a, F> {
 }
 
 #[test]
-fn test_mimc_gm_17() {
-    // We're going to use the Groth-Maller17 proving system.
-    use ark_groth16::{
+fn test_mimc_groth16() {
+    // We're going to use the Groth16 proving system.
+    use legogro16::{
         create_random_proof, generate_random_parameters, prepare_verifying_key, verify_commitment,
         verify_proof,
     };
 
     // This may not be cryptographically safe, use
     // `OsRng` (for example) in production software.
-    let rng = &mut test_rng();
+    let mut rng = StdRng::seed_from_u64(0u64);
 
     // Generate the MiMC round constants
     let constants = (0..MIMC_ROUNDS).map(|_| rng.gen()).collect::<Vec<_>>();
@@ -169,9 +170,9 @@ fn test_mimc_gm_17() {
         };
 
         let pedersen_bases = (0..3)
-            .map(|_| ark_bls12_377::G1Projective::rand(rng).into_affine())
+            .map(|_| ark_bls12_377::G1Projective::rand(&mut rng).into_affine())
             .collect::<Vec<_>>();
-        generate_random_parameters::<Bls12_377, _, _>(c, &pedersen_bases, rng).unwrap()
+        generate_random_parameters::<Bls12_377, _, _>(c, &pedersen_bases, &mut rng).unwrap()
     };
 
     // Prepare the verification key (for proof verification)
@@ -207,10 +208,10 @@ fn test_mimc_gm_17() {
             };
 
             // Create commitment randomness
-            let v = Fr::rand(rng);
-            let link_v = Fr::rand(rng);
+            let v = Fr::rand(&mut rng);
+            let link_v = Fr::rand(&mut rng);
             // Create a LegoGro16 proof with our parameters.
-            let proof = create_random_proof(c, v, link_v, &params, rng).unwrap();
+            let proof = create_random_proof(c, v, link_v, &params, &mut rng).unwrap();
             assert!(verify_proof(&pvk, &proof).unwrap());
             assert!(verify_commitment(&pvk, &proof, &[image], &v, &link_v).unwrap());
 

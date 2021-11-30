@@ -4,7 +4,7 @@ use crate::{
 };
 use ark_ec::{PairingEngine, ProjectiveCurve};
 use ark_ff::UniformRand;
-use ark_std::test_rng;
+use ark_std::rand::{rngs::StdRng, SeedableRng};
 
 use core::ops::MulAssign;
 
@@ -49,30 +49,30 @@ fn test_prove_and_verify<E>(n_iters: usize)
 where
     E: PairingEngine,
 {
-    let rng = &mut test_rng();
+    let mut rng = StdRng::seed_from_u64(0u64);
 
     let pedersen_bases = (0..3)
-        .map(|_| E::G1Projective::rand(rng).into_affine())
+        .map(|_| E::G1Projective::rand(&mut rng).into_affine())
         .collect::<Vec<_>>();
 
     let params = generate_random_parameters::<E, _, _>(
         MySillyCircuit { a: None, b: None },
         &pedersen_bases,
-        rng,
+        &mut rng,
     )
     .unwrap();
 
     let pvk = prepare_verifying_key::<E>(&params.vk);
 
     for _ in 0..n_iters {
-        let a = E::Fr::rand(rng);
-        let b = E::Fr::rand(rng);
+        let a = E::Fr::rand(&mut rng);
+        let b = E::Fr::rand(&mut rng);
         let mut c = a;
         c.mul_assign(&b);
 
         // Create commitment randomness
-        let v = E::Fr::rand(rng);
-        let link_v = E::Fr::rand(rng);
+        let v = E::Fr::rand(&mut rng);
+        let link_v = E::Fr::rand(&mut rng);
         // Create a LegoGro16 proof with our parameters.
         let proof = create_random_proof(
             MySillyCircuit {
@@ -82,7 +82,7 @@ where
             v,
             link_v,
             &params,
-            rng,
+            &mut rng,
         )
         .unwrap();
 

@@ -11,7 +11,7 @@ use ark_relations::r1cs::{
     SynthesisError, SynthesisMode,
 };
 use ark_std::rand::Rng;
-use ark_std::{cfg_into_iter, cfg_iter};
+use ark_std::{cfg_into_iter, cfg_iter, end_timer, start_timer};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -142,11 +142,14 @@ where
     // Generate the R1CS proving key
     let proving_key_time = start_timer!(|| "Generate the R1CS proving key");
 
-    let alpha_g1 = g1_generator.mul(alpha.into());
-    let beta_g1 = g1_generator.mul(beta.into());
-    let beta_g2 = g2_generator.mul(beta.into());
-    let delta_g1 = g1_generator.mul(delta.into());
-    let delta_g2 = g2_generator.mul(delta.into());
+    let beta_repr = beta.into_repr();
+    let delta_repr = delta.into_repr();
+
+    let alpha_g1 = g1_generator.mul(alpha.into_repr());
+    let beta_g1 = g1_generator.mul(beta_repr);
+    let beta_g2 = g2_generator.mul(beta_repr);
+    let delta_g1 = g1_generator.mul(delta_repr);
+    let delta_g2 = g2_generator.mul(delta_repr);
 
     // Compute the A-query
     let a_time = start_timer!(|| "Calculate A");
@@ -190,7 +193,7 @@ where
 
     // Generate R1CS verification key
     let verifying_key_time = start_timer!(|| "Generate the R1CS verification key");
-    let gamma_g2 = g2_generator.mul(gamma.into());
+    let gamma_g2 = g2_generator.mul(gamma.into_repr());
     let gamma_abc_g1 = FixedBaseMSM::multi_scalar_mul::<E::G1Projective>(
         scalar_bits,
         g1_window,

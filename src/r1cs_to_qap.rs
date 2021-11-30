@@ -1,6 +1,6 @@
 use ark_ff::{One, PrimeField, Zero};
 use ark_poly::EvaluationDomain;
-use ark_std::{cfg_iter, cfg_iter_mut, vec};
+use ark_std::{cfg_iter, cfg_iter_mut, end_timer, start_timer, vec};
 
 use crate::Vec;
 use ark_relations::r1cs::{ConstraintSystemRef, Result as R1CSResult, SynthesisError};

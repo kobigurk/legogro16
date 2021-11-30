@@ -10,7 +10,7 @@ use ark_relations::r1cs::{
     ConstraintSynthesizer, ConstraintSystem, OptimizationGoal, Result as R1CSResult,
 };
 use ark_std::rand::Rng;
-use ark_std::{cfg_into_iter, cfg_iter, vec::Vec};
+use ark_std::{cfg_into_iter, cfg_iter, end_timer, start_timer, vec::Vec};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -76,6 +76,10 @@ where
 
     let h_acc = VariableBaseMSM::multi_scalar_mul(&pk.h_query, &h_assignment);
     drop(h_assignment);
+
+    let s_repr = s.into_repr();
+    let r_repr = r.into_repr();
+
     // Compute C
     let prover = cs.borrow().unwrap();
     let aux_assignment = cfg_iter!(prover.witness_assignment)
@@ -84,8 +88,8 @@ where
 
     let l_aux_acc = VariableBaseMSM::multi_scalar_mul(&pk.l_query, &aux_assignment);
 
-    let r_s_delta_g1 = pk.delta_g1.into_projective().mul(r.into()).mul(s.into());
-    let v_eta_delta_inv = pk.eta_delta_inv_g1.into_projective().mul(v.into());
+    let r_s_delta_g1 = pk.delta_g1.into_projective().mul(r_repr).mul(s_repr);
+    let v_eta_delta_inv = pk.eta_delta_inv_g1.into_projective().mul(v.into_repr());
 
     end_timer!(c_acc_time);
 
@@ -111,7 +115,7 @@ where
 
     let g_a = calculate_coeff(r_g1, &pk.a_query, pk.vk.alpha_g1, &assignment);
 
-    let s_g_a = g_a.mul(s.into());
+    let s_g_a = g_a.mul(s_repr);
     end_timer!(a_acc_time);
 
     // Compute B in G1 if needed
@@ -131,7 +135,7 @@ where
     let b_g2_acc_time = start_timer!(|| "Compute B in G2");
     let s_g2 = pk.vk.delta_g2.mul(s);
     let g2_b = calculate_coeff(s_g2, &pk.b_g2_query, pk.vk.beta_g2, &assignment);
-    let r_g1_b = g1_b.mul(r.into());
+    let r_g1_b = g1_b.mul(r_repr);
     drop(assignment);
 
     end_timer!(b_g2_acc_time);
