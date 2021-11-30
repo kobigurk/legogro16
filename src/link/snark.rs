@@ -4,7 +4,10 @@ use ark_ff::{bytes::ToBytes, One, UniformRand};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::io::{Read, Result as IoResult, Write};
 use ark_std::rand::Rng;
-use std::ops::Neg;
+use ark_std::ops::Neg;
+use ark_std::vec;
+use ark_std::vec::Vec;
+use ark_std::marker::PhantomData;
 
 #[derive(Clone, Default, PartialEq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PP<
@@ -92,7 +95,7 @@ fn vec_to_g2<PE: PairingEngine>(
 }
 
 pub struct PESubspaceSnark<PE: PairingEngine> {
-    pairing_engine_type: std::marker::PhantomData<PE>,
+    pairing_engine_type: PhantomData<PE>,
 }
 
 // NB: Now the system is for y = Mx

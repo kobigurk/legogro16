@@ -1,6 +1,9 @@
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::Zero;
-use std::ops::{AddAssign, Mul};
+use ark_std::ops::{AddAssign, Mul};
+use ark_std::vec;
+use ark_std::vec::Vec;
+use ark_std::marker::PhantomData;
 
 /// CoeffPos: A struct to help build sparse matrices.
 #[derive(Clone, Debug)]
@@ -37,7 +40,7 @@ impl<T: Copy> SparseMatrix<T> {
         self.cols[c].push(coeff_pos);
     }
 
-    // insert a continguous sequence of values at row r starting from c_offset
+    // insert a continuous sequence of values at row r starting from c_offset
     pub fn insert_row_slice(&mut self, r: usize, c_offset: usize, vs: &[T]) {
         // NB: could be improved in efficiency by first extending the vector
         for (i, x) in vs.iter().enumerate() {
@@ -51,7 +54,7 @@ impl<T: Copy> SparseMatrix<T> {
 }
 
 pub struct SparseLinAlgebra<PE: PairingEngine> {
-    pairing_engine_type: std::marker::PhantomData<PE>,
+    pairing_engine_type: PhantomData<PE>,
 }
 
 impl<PE: PairingEngine> SparseLinAlgebra<PE> {

@@ -7,6 +7,8 @@ use super::{PreparedVerifyingKey, Proof, VerifyingKey};
 use ark_relations::r1cs::{Result as R1CSResult, SynthesisError};
 
 use core::ops::{AddAssign, Neg};
+use ark_std::vec;
+use ark_std::vec::Vec;
 
 /// Prepare the verifying key `vk` for use in proof verification.
 pub fn prepare_verifying_key<E: PairingEngine>(vk: &VerifyingKey<E>) -> PreparedVerifyingKey<E> {
