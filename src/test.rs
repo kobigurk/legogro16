@@ -8,7 +8,7 @@ use ark_std::rand::{rngs::StdRng, SeedableRng};
 
 use core::ops::MulAssign;
 
-use ark_ff::{Field, Zero};
+use ark_ff::Field;
 use ark_relations::{
     lc,
     r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
