@@ -11,11 +11,12 @@ mod test {
     use super::{PESubspaceSnark, SparseMatrix, SubspaceSnark, PP};
     use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
     use ark_ec::{AffineCurve, ProjectiveCurve};
-    use ark_ff::{test_rng, One, PrimeField, UniformRand, Zero};
+    use ark_ff::{One, PrimeField, UniformRand, Zero};
+    use ark_std::rand::{rngs::StdRng, SeedableRng};
 
     #[test]
     fn test_basic() {
-        let mut rng = test_rng();
+        let mut rng = StdRng::seed_from_u64(0u64);
         let g1 = G1Projective::rand(&mut rng).into_affine();
         let g2 = G2Projective::rand(&mut rng).into_affine();
 
@@ -43,7 +44,7 @@ mod test {
 
     #[test]
     fn test_same_value_different_bases() {
-        let mut rng = test_rng();
+        let mut rng = StdRng::seed_from_u64(0u64);
         let g1 = G1Projective::rand(&mut rng).into_affine();
         let g2 = G2Projective::rand(&mut rng).into_affine();
 
