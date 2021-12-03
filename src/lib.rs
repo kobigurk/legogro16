@@ -6,13 +6,6 @@
 #![allow(clippy::many_single_char_names, clippy::op_ref)]
 #![forbid(unsafe_code)]
 
-// #[macro_use]
-// extern crate bench_utils;
-
-#[cfg(feature = "r1cs")]
-#[macro_use]
-extern crate derivative;
-
 /// Reduce an R1CS instance to a *Quadratic Arithmetic Program* instance.
 pub(crate) mod r1cs_to_qap;
 
