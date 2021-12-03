@@ -3,11 +3,11 @@ use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{bytes::ToBytes, One, UniformRand};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::io::{Read, Result as IoResult, Write};
-use ark_std::rand::Rng;
+use ark_std::marker::PhantomData;
 use ark_std::ops::Neg;
+use ark_std::rand::Rng;
 use ark_std::vec;
 use ark_std::vec::Vec;
-use ark_std::marker::PhantomData;
 
 #[derive(Clone, Default, PartialEq, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct PP<
